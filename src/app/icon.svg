@@ -1,1 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><rect width="64" height="64" rx="17" fill="#28634e"/><g stroke="#fffbe8" stroke-width="4" stroke-linecap="round"><path d="M16 28v8m8-16v24m8-31v38m8-29v20m8-14v8"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="tile" x1="90" y1="18" x2="440" y2="500" gradientUnits="userSpaceOnUse"><stop stop-color="#39B7FF"/><stop offset=".48" stop-color="#137ED7"/><stop offset="1" stop-color="#154AAB"/></linearGradient>
+    <linearGradient id="paper" x1="160" y1="100" x2="330" y2="390" gradientUnits="userSpaceOnUse"><stop stop-color="#fff"/><stop offset="1" stop-color="#D8EEFF"/></linearGradient>
+    <linearGradient id="play" x1="294" y1="278" x2="414" y2="414" gradientUnits="userSpaceOnUse"><stop stop-color="#68E4F5"/><stop offset="1" stop-color="#18A4DA"/></linearGradient>
+    <filter id="shadow" x="70" y="60" width="370" height="400" filterUnits="userSpaceOnUse"><feDropShadow dy="12" stdDeviation="12" flood-color="#00356E" flood-opacity=".2"/></filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#tile)"/>
+  <rect x="1" y="1" width="510" height="510" rx="111" stroke="#fff" stroke-opacity=".24" stroke-width="2"/>
+  <path d="M164 112h151a25 25 0 0 1 25 25v224a25 25 0 0 1-25 25H164a25 25 0 0 1-25-25V137a25 25 0 0 1 25-25Z" fill="#9BDCFF" fill-opacity=".5" transform="rotate(-9 240 250)"/>
+  <g filter="url(#shadow)">
+    <path d="M174 98h107l73 73v181a28 28 0 0 1-28 28H174a28 28 0 0 1-28-28V126a28 28 0 0 1 28-28Z" fill="url(#paper)"/>
+    <path d="M281 98v52a21 21 0 0 0 21 21h52" fill="#A6D7FB"/>
+    <path d="M192 211h112M192 251h112M192 291h63" stroke="#388DCC" stroke-width="15" stroke-linecap="round"/>
+    <circle cx="349" cy="342" r="73" fill="url(#play)"/>
+    <circle cx="349" cy="342" r="72" stroke="#fff" stroke-opacity=".55" stroke-width="2"/>
+    <path d="M332 309c0-5 5-8 9-5l45 30c5 3 5 9 0 12l-45 30c-4 3-9 0-9-5Z" fill="#fff"/>
+  </g>
+</svg>

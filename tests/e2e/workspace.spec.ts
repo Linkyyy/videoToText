@@ -14,7 +14,7 @@ test("完整的中文首页、示例和字幕时间轴", async ({ page }, testIn
   page.on("pageerror", (error) => errors.push(error.message));
   await open(page);
   await expect(
-    page.getByRole("heading", { name: "让视频，成为你的知识。" }),
+    page.getByRole("heading", { name: "工作台", exact: true }),
   ).toBeVisible();
   expect(
     await page.evaluate(

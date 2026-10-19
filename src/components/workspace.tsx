@@ -12,15 +12,13 @@ import {
   Check,
   CheckCheck,
   ChevronDown,
-  CircleHelp,
+  ChevronRight,
   Clipboard,
   Clock3,
   Copy,
   FileAudio,
   FileText,
   FolderClock,
-  History,
-  LayoutDashboard,
   Link2,
   LoaderCircle,
   Menu,
@@ -35,6 +33,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { FluentIcon, type FluentIconName } from "@/components/fluent-icon";
 import { DEMO_SUMMARY, DEMO_TRANSCRIPT } from "@/lib/demo";
 import {
   formatTime,
@@ -57,21 +56,21 @@ type SavedNote = {
   transcript: Transcript;
   summary: string;
 };
-type Modal = "settings" | "guide" | null;
+type Modal = "settings" | "guide" | "search" | null;
 const HISTORY_KEY = "shijian-notes-v1";
 const STYLES = [
   {
     id: "analysis",
     name: "全面解析",
     icon: Sparkles,
-    desc: "观点 · 结构 · 行动",
+    desc: "观点与行动",
   },
-  { id: "study", name: "学习笔记", icon: BookOpen, desc: "概念 · 重点 · 复习" },
+  { id: "study", name: "学习笔记", icon: BookOpen, desc: "概念与复习" },
   {
     id: "meeting",
     name: "会议纪要",
     icon: CheckCheck,
-    desc: "讨论 · 决定 · 待办",
+    desc: "决定与待办",
   },
 ] as const;
 
@@ -139,11 +138,13 @@ export default function Workspace() {
   const [toast, setToast] = useState("");
   const [history, setHistory] = useState<SavedNote[]>([]);
   const [search, setSearch] = useState("");
+  const [commandQuery, setCommandQuery] = useState("");
   const [editing, setEditing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const resultRef = useRef<HTMLElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const commandRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch("/api/health")
@@ -178,7 +179,19 @@ export default function Workspace() {
   useEffect(() => {
     if (modal) dialogRef.current?.showModal();
     else dialogRef.current?.close();
+    if (modal === "search") commandRef.current?.focus();
   }, [modal]);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandQuery("");
+        setModal("search");
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   function saveNote(item: Transcript, markdown: string) {
     const note = {
@@ -213,6 +226,7 @@ export default function Workspace() {
     setError("");
     setEditing(false);
     setView("workspace");
+    setMobileNav(false);
     setTimeout(
       () =>
         resultRef.current?.scrollIntoView({
@@ -417,8 +431,7 @@ export default function Workspace() {
       setJob(null);
       setBusy(false);
       saveNote(result, "");
-      if (health?.deepseek)
-        await generateSummary(result, abort);
+      if (health?.deepseek) await generateSummary(result, abort);
       else {
         setTab("transcript");
         setStatus("");
@@ -478,55 +491,214 @@ export default function Workspace() {
   const filteredHistory = history.filter((n) =>
     n.transcript.title.toLowerCase().includes(search.toLowerCase()),
   );
+  function openSource(next: "link" | "file" | "text") {
+    if (working) {
+      setToast("请先停止当前处理，再切换内容来源。");
+      return;
+    }
+    setView("workspace");
+    setSource(next);
+    setMobileNav(false);
+    setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function openNote(note: SavedNote) {
+    if (working) {
+      setToast("请先停止当前处理，再打开历史笔记。");
+      return;
+    }
+    setTranscript(note.transcript);
+    setSummary(note.summary);
+    setDemo(false);
+    setTab(note.summary ? "summary" : "transcript");
+    setView("workspace");
+    setError("");
+    setEditing(false);
+    setMobileNav(false);
+  }
+  const commands: {
+    label: string;
+    description: string;
+    icon: FluentIconName;
+    run: () => void;
+  }[] = [
+    {
+      label: "视频链接",
+      description: "从 B站、抖音等平台提取字幕",
+      icon: "link",
+      run: () => openSource("link"),
+    },
+    {
+      label: "上传音视频",
+      description: "导入音视频或字幕文件",
+      icon: "upload",
+      run: () => openSource("file"),
+    },
+    {
+      label: "粘贴字幕",
+      description: "直接整理已有字幕或文本",
+      icon: "text",
+      run: () => openSource("text"),
+    },
+    {
+      label: "本机历史",
+      description: "查看此浏览器保存的最近 6 份笔记",
+      icon: "history",
+      run: () => {
+        setView("history");
+        setMobileNav(false);
+      },
+    },
+    {
+      label: "服务设置",
+      description: "查看 DeepSeek 和视频处理服务状态",
+      icon: "settings",
+      run: () => setModal("settings"),
+    },
+    {
+      label: "使用指南",
+      description: "了解提取字幕、总结和导出",
+      icon: "help",
+      run: () => setModal("guide"),
+    },
+  ];
+  const query = commandQuery.trim().toLowerCase();
+  const matchedCommands = commands.filter((item) =>
+    `${item.label} ${item.description}`.toLowerCase().includes(query),
+  );
+  const matchedNotes = history.filter((note) =>
+    `${note.transcript.title} ${note.transcript.text} ${note.summary}`
+      .toLowerCase()
+      .includes(query),
+  );
 
   return (
     <div className="app-shell">
+      <header className="topbar">
+        <div className="window-title">
+          <button
+            className="mobile-menu icon-button"
+            onClick={() => setMobileNav(!mobileNav)}
+            aria-label="打开导航"
+          >
+            <Menu size={20} />
+          </button>
+          <button
+            className="desktop-back icon-button"
+            onClick={() => setView("workspace")}
+            disabled={view === "workspace"}
+            aria-label="返回工作台"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <span>视笺</span>
+        </div>
+        <button
+          className="global-search"
+          onClick={() => {
+            setCommandQuery("");
+            setModal("search");
+          }}
+          aria-label="搜索功能或笔记"
+        >
+          <Search size={17} />
+          <span>搜索功能或笔记</span>
+          <kbd>Ctrl K</kbd>
+        </button>
+        <div className="topbar-actions">
+          <span className="local-badge">
+            <ShieldCheck size={14} />
+            本机工作空间
+          </span>
+          <button
+            className="avatar"
+            onClick={() => setModal("settings")}
+            aria-label="打开设置"
+          >
+            <Settings2 size={18} />
+          </button>
+        </div>
+      </header>
       <aside className={`sidebar ${mobileNav ? "mobile-open" : ""}`}>
         <button className="brand" onClick={newTask} aria-label="视笺首页">
           <span className="brand-icon">
-            <AudioLines size={25} strokeWidth={2.3} />
+            <img src="/icon.svg" width="52" height="52" alt="" />
           </span>
           <span>
-            视笺<small>VIDEO TO KNOWLEDGE</small>
+            视笺<small>把视频变成知识</small>
           </span>
         </button>
         <button className="new-note" onClick={newTask}>
           <Plus size={18} />
           新建笔记
         </button>
-        <div className="nav-caption">你的工作空间</div>
         <nav aria-label="主导航">
           <button
             className={view === "workspace" ? "nav-item active" : "nav-item"}
+            aria-current={view === "workspace" ? "page" : undefined}
             onClick={() => {
               setView("workspace");
               setMobileNav(false);
             }}
           >
-            <LayoutDashboard size={18} />
+            <FluentIcon name="workspace" />
             工作台
-            <span className="nav-dot" />
           </button>
           <button
             className={view === "history" ? "nav-item active" : "nav-item"}
+            aria-current={view === "history" ? "page" : undefined}
             onClick={() => {
               setView("history");
               setMobileNav(false);
             }}
           >
-            <FolderClock size={18} />
+            <FluentIcon name="history" />
             本机历史<span className="nav-count">{history.length}</span>
+          </button>
+          <div className="nav-caption">快速导入</div>
+          <button className="nav-item" onClick={() => openSource("link")}>
+            <FluentIcon name="link" />
+            视频链接
+          </button>
+          <button className="nav-item" onClick={() => openSource("file")}>
+            <FluentIcon name="upload" />
+            上传音视频
+          </button>
+          <button className="nav-item" onClick={() => openSource("text")}>
+            <FluentIcon name="text" />
+            粘贴字幕
+          </button>
+          <div className="nav-divider" />
+          <button
+            className="nav-item"
+            onClick={() => {
+              setMobileNav(false);
+              setModal("settings");
+            }}
+          >
+            <FluentIcon name="settings" />
+            服务设置
+          </button>
+          <button
+            className="nav-item"
+            onClick={() => {
+              setMobileNav(false);
+              setModal("guide");
+            }}
+          >
+            <FluentIcon name="help" />
+            使用指南
           </button>
         </nav>
         <div className="sidebar-tip">
           <div className="tip-icon">
-            <WandSparkles size={21} />
+            <FluentIcon name="sparkles" size={26} />
           </div>
-          <strong>少一点收藏，多一点理解。</strong>
+          <strong>好内容，值得留下来。</strong>
           <p>
-            把看过的好内容，
+            字幕、重点和行动建议，
             <br />
-            变成真正属于你的知识。
+            整理成一份可带走的笔记。
           </p>
           <button onClick={showDemo}>
             看看一份好笔记
@@ -534,15 +706,6 @@ export default function Workspace() {
           </button>
         </div>
         <div className="sidebar-bottom">
-          <button className="nav-item" onClick={() => setModal("guide")}>
-            <CircleHelp size={18} />
-            使用与部署指南
-            <ArrowRight size={14} />
-          </button>
-          <button className="nav-item" onClick={() => setModal("settings")}>
-            <Settings2 size={18} />
-            服务设置
-          </button>
           <div className="engine">
             <span
               className={health?.deepseek ? "status-dot" : "status-dot pending"}
@@ -562,42 +725,16 @@ export default function Workspace() {
         />
       )}
       <div className="main-shell">
-        <header className="topbar">
-          <div className="breadcrumbs">
-            <button
-              className="mobile-menu icon-button"
-              onClick={() => setMobileNav(!mobileNav)}
-              aria-label="打开导航"
-            >
-              <Menu size={20} />
-            </button>
-            <span>我的工作空间</span>
-            <span className="crumb-divider">/</span>
-            <strong>{view === "workspace" ? "工作台" : "本机历史"}</strong>
-          </div>
-          <div className="topbar-actions">
-            <span className="local-badge">
-              <span />
-              个人知识工作台
-            </span>
-            <button
-              className="avatar"
-              onClick={() => setModal("settings")}
-              aria-label="打开设置"
-            >
-              笺
-            </button>
-          </div>
-        </header>
         <main className="main-content">
           {view === "history" ? (
             <>
               <div className="page-heading">
                 <div>
-                  <div className="eyebrow">
-                    <History size={14} /> YOUR KNOWLEDGE, KEPT CLOSE
+                  <div className="settings-breadcrumb">
+                    <span>我的工作空间</span>
+                    <ChevronRight size={23} />
+                    <h1>本机历史</h1>
                   </div>
-                  <h1>每一次理解，都有迹可循。</h1>
                   <p>
                     最近 6 份笔记仅保存在此浏览器，清理浏览器数据会删除记录。
                   </p>
@@ -673,17 +810,7 @@ export default function Workspace() {
                       <span>
                         {new Date(n.date).toLocaleDateString("zh-CN")}
                       </span>
-                      <button
-                        onClick={() => {
-                          setTranscript(n.transcript);
-                          setSummary(n.summary);
-                          setDemo(false);
-                          setTab(n.summary ? "summary" : "transcript");
-                          setView("workspace");
-                          setError("");
-                          setEditing(false);
-                        }}
-                      >
+                      <button onClick={() => openNote(n)}>
                         打开笔记
                         <ArrowRight size={14} />
                       </button>
@@ -711,15 +838,12 @@ export default function Workspace() {
             <>
               <div className="page-heading">
                 <div>
-                  <div className="eyebrow">
-                    <span className="tiny-spark">✦</span> WATCH LESS. UNDERSTAND
-                    MORE.
+                  <div className="settings-breadcrumb">
+                    <span>我的工作空间</span>
+                    <ChevronRight size={23} />
+                    <h1>工作台</h1>
                   </div>
-                  <h1>
-                    让视频，成为你的
-                    <span className="headline-accent">知识。</span>
-                  </h1>
-                  <p>从一段视频，到一份清晰的笔记。把时间留给思考。</p>
+                  <p>提取字幕、整理重点，把看过的内容留下来。</p>
                 </div>
                 <button
                   className="demo-button"
@@ -732,7 +856,7 @@ export default function Workspace() {
               </div>
               <div className="workflow-strip">
                 <span>
-                  <span className="workflow-number">01</span>导入视频
+                  <span className="workflow-number">01</span>导入内容
                 </span>
                 <i />
                 <span>
@@ -740,7 +864,7 @@ export default function Workspace() {
                 </span>
                 <i />
                 <span>
-                  <span className="workflow-number">03</span>AI 整理与分析
+                  <span className="workflow-number">03</span>整理笔记
                   <span className="ai-mini">DeepSeek</span>
                 </span>
               </div>
@@ -751,10 +875,10 @@ export default function Workspace() {
                 >
                   <div className="panel-title">
                     <span className="section-icon">
-                      <Link2 size={18} />
+                      <FluentIcon name="link" size={24} />
                     </span>
-                    <h2>从这里开始</h2>
-                    <span className="subtle-tag">INPUT</span>
+                    <h2>导入内容</h2>
+                    <span className="subtle-tag">内容来源</span>
                   </div>
                   <div
                     className="source-tabs"
@@ -816,7 +940,7 @@ export default function Workspace() {
                           </button>
                         </div>
                         <p className="field-help">
-                          支持视频页面地址，也可以直接粘贴分享链接。
+                          可直接粘贴视频链接或分享文案。
                         </p>
                         <div className="platform-list">
                           <span>
@@ -921,13 +1045,14 @@ export default function Workspace() {
                   <div className="input-divider" />
                   <div className="section-label">
                     <Sparkles size={16} />
-                    笔记整理方式<span>按你的需要，组织内容</span>
+                    整理方式<span>选择输出结构</span>
                   </div>
                   <div className="style-options">
                     {STYLES.map((s) => (
                       <button
                         key={s.id}
                         disabled={working}
+                        aria-pressed={style === s.id}
                         className={
                           style === s.id
                             ? "style-option selected"
@@ -1013,7 +1138,7 @@ export default function Workspace() {
                   <div className="result-heading">
                     <div className="panel-title">
                       <span className="section-icon mint">
-                        <FileText size={18} />
+                        <FluentIcon name="text" size={24} />
                       </span>
                       <h2>你的知识笔记</h2>
                     </div>
@@ -1027,7 +1152,7 @@ export default function Workspace() {
                           ? "示例预览"
                           : transcript
                             ? "已整理"
-                            : "等待灵感"}
+                            : "等待导入"}
                     </span>
                   </div>
                   {!transcript && !busy ? (
@@ -1048,9 +1173,7 @@ export default function Workspace() {
                               <i key={i} style={{ height: h }} />
                             ))}
                           </div>
-                          <span className="art-video-label">
-                            A WORLD OF IDEAS
-                          </span>
+                          <span className="art-video-label">VIDEO / AUDIO</span>
                         </div>
                         <div className="art-note">
                           <span className="art-note-top">
@@ -1070,11 +1193,11 @@ export default function Workspace() {
                         <span className="art-star star-two">✦</span>
                         <span className="art-pill">
                           <Check size={12} />
-                          灵感已捕获
+                          结构化笔记
                         </span>
                       </div>
                       <div className="empty-eyebrow">
-                        FROM WATCHING TO UNDERSTANDING
+                        从视频中，找到真正有用的内容
                       </div>
                       <h2>把长视频，读成几分钟。</h2>
                       <p>
@@ -1106,7 +1229,7 @@ export default function Workspace() {
                       <div className="processing-icon">
                         <AudioLines size={39} />
                       </div>
-                      <div className="eyebrow">MAKING ROOM FOR INSIGHT</div>
+                      <div className="eyebrow">正在整理视频内容</div>
                       <h2>内容，正在变成笔记。</h2>
                       <p role="status">{status}</p>
                       <div className="progress-track">
@@ -1366,12 +1489,12 @@ export default function Workspace() {
               <div className="bottom-note">
                 <span>
                   <ShieldCheck size={14} />
-                  密钥仅在服务端使用
+                  历史笔记仅保存在本机
                 </span>
                 <span className="bottom-dot">·</span>
                 <span>支持链接、音视频及字幕文件</span>
                 <button onClick={() => setModal("guide")}>
-                  了解工作原理
+                  查看使用指南
                   <ArrowRight size={12} />
                 </button>
               </div>
@@ -1381,13 +1504,20 @@ export default function Workspace() {
             <span>
               视笺 <i>✦</i> 把看见的，变成理解的。
             </span>
-            <span>MADE FOR CURIOUS MINDS</span>
+            <span>让每一次观看，都有收获。</span>
           </footer>
         </main>
       </div>
       <dialog
         ref={dialogRef}
-        className="modal"
+        className={`modal ${modal === "search" ? "search-modal" : ""}`}
+        aria-label={
+          modal === "search"
+            ? "搜索功能或笔记"
+            : modal === "settings"
+              ? "服务设置"
+              : "使用指南"
+        }
         onCancel={() => setModal(null)}
         onClick={(e) => {
           if (e.target === e.currentTarget) setModal(null);
@@ -1401,10 +1531,74 @@ export default function Workspace() {
           >
             <X size={20} />
           </button>
-          {modal === "settings" ? (
+          {modal === "search" ? (
+            <>
+              <h2>搜索</h2>
+              <label className="command-input">
+                <Search size={20} />
+                <input
+                  ref={commandRef}
+                  value={commandQuery}
+                  onChange={(event) => setCommandQuery(event.target.value)}
+                  placeholder="搜索功能、笔记标题或内容"
+                  aria-label="搜索功能和本机笔记"
+                />
+              </label>
+              <div className="command-results">
+                {matchedCommands.length > 0 && (
+                  <p className="command-caption">功能</p>
+                )}
+                {matchedCommands.map((item) => (
+                  <button
+                    key={item.label}
+                    className="command-result"
+                    onClick={() => {
+                      setModal(null);
+                      item.run();
+                    }}
+                  >
+                    <FluentIcon name={item.icon} />
+                    <span>
+                      <strong>{item.label}</strong>
+                      <small>{item.description}</small>
+                    </span>
+                    <ChevronRight size={16} />
+                  </button>
+                ))}
+                {matchedNotes.length > 0 && (
+                  <p className="command-caption">本机笔记</p>
+                )}
+                {matchedNotes.map((note) => (
+                  <button
+                    key={note.id}
+                    className="command-result"
+                    onClick={() => {
+                      setModal(null);
+                      openNote(note);
+                    }}
+                  >
+                    <FluentIcon name="text" />
+                    <span>
+                      <strong>{note.transcript.title}</strong>
+                      <small>
+                        {new Date(note.date).toLocaleDateString("zh-CN")} ·
+                        仅存此浏览器
+                      </small>
+                    </span>
+                    <ChevronRight size={16} />
+                  </button>
+                ))}
+                {!matchedCommands.length && !matchedNotes.length && (
+                  <p className="command-empty">
+                    没有找到相关功能或笔记，试试其他关键词。
+                  </p>
+                )}
+              </div>
+            </>
+          ) : modal === "settings" ? (
             <>
               <span className="modal-symbol">
-                <Settings2 size={24} />
+                <FluentIcon name="settings" size={32} />
               </span>
               <h2>服务设置</h2>
               <p className="modal-description">
@@ -1465,7 +1659,7 @@ export default function Workspace() {
           ) : (
             <>
               <span className="modal-symbol">
-                <BookOpen size={24} />
+                <FluentIcon name="help" size={32} />
               </span>
               <h2>让每段内容，都有收获。</h2>
               <p className="modal-description">
@@ -1488,8 +1682,7 @@ export default function Workspace() {
                   <div>
                     <strong>字幕优先，语音转写兜底</strong>
                     <p>
-                      Docker 服务用 yt-dlp 读取已有字幕；无字幕时由 FFmpeg
-                      提取音轨，调用 Groq Whisper 分段转写。
+                      优先提取视频已有字幕；没有字幕时自动识别语音，并保留时间轴，方便回看和校对。
                     </p>
                   </div>
                 </li>
@@ -1503,14 +1696,10 @@ export default function Workspace() {
                   </div>
                 </li>
               </ol>
-              <div className="deploy-guide">
-                <strong>部署：Vercel + Docker</strong>
+              <div className="guide-tip">
+                <strong>视频链接无法识别？</strong>
                 <p>
-                  ① 部署仓库的 worker/ 目录，配置
-                  GROQ_API_KEY、WORKER_API_TOKEN、CORS_ORIGINS。
-                  <br />② 在 Vercel 导入项目，配置
-                  DEEPSEEK_API_KEY、WORKER_URL 和相同的 WORKER_API_TOKEN。
-                  <br />③ 打开网站即可使用。完整命令和自检步骤见仓库 README。
+                  可以改用上传音视频，或直接导入字幕文件，继续整理你的笔记。
                 </p>
               </div>
               <div className="privacy-note">
